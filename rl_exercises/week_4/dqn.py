@@ -131,11 +131,12 @@ class DQNAgent(AbstractAgent):
         float
             Exploration rate.
         """
-        # TODO: implement exponential‐decayin
+        # TODO (DONE): implement exponential‐decay
         # ε = ε_final + (ε_start - ε_final) * exp(-total_steps / ε_decay)
         # Currently, it is constant and returns the starting value ε
-
-        return self.epsilon_start
+        return self.epsilon_final + (self.epsilon_start - self.epsilon_final) * np.exp(
+            -self.total_steps / self.epsilon_decay
+        )
 
     def predict_action(
         self, state: np.ndarray, evaluate: bool = False
@@ -159,18 +160,24 @@ class DQNAgent(AbstractAgent):
             Empty dict (compatible with interface).
         """
         if evaluate:
-            # TODO: select purely greedy action from Q(s)
+            # TODO (DONE): select purely greedy action from Q(s)
             with torch.no_grad():
-                qvals = ...  # noqa: F841
+                state_tensor = torch.as_tensor(state, dtype=torch.float32).unsqueeze(0)
+                qvals = self.q(state_tensor)
 
-            action = None
+            action = int(qvals.argmax(dim=1).item())
         else:
             if np.random.rand() < self.epsilon():
-                # TODO: sample random action
-                action = None
+                # TODO (DONE): sample random action
+                action = self.env.action_space.sample()
             else:
-                # TODO: select purely greedy action from Q(s)
-                action = None
+                # TODO (DONE): select purely greedy action from Q(s)
+                with torch.no_grad():
+                    state_tensor = torch.as_tensor(
+                        state, dtype=torch.float32
+                    ).unsqueeze(0)
+                    qvals = self.q(state_tensor)
+                action = int(qvals.argmax(dim=1).item())
 
         return action
 
@@ -275,8 +282,8 @@ class DQNAgent(AbstractAgent):
 
             # update if ready
             if len(self.buffer) >= self.batch_size:
-                # TODO: sample a batch from replay buffer
-                batch = ...
+                # TODO (DONE): sample a batch from replay buffer
+                batch = batch = self.buffer.sample(self.batch_size)
                 _ = self.update_agent(batch)
 
             if done or truncated:
@@ -285,8 +292,8 @@ class DQNAgent(AbstractAgent):
                 ep_reward = 0.0
                 # logging
                 if len(recent_rewards) % 10 == 0:
-                    # TODO: compute avg over last eval_interval episodes and print
-                    avg = ...
+                    # TODO (DONE): compute avg over last eval_interval episodes and print
+                    avg = float(np.mean(recent_rewards[-eval_interval:]))
                     print(
                         f"Frame {frame}, AvgReward(10): {avg:.2f}, ε={self.epsilon():.3f}"
                     )
