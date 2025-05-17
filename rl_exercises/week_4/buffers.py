@@ -65,7 +65,6 @@ class ReplayBuffer(AbstractBuffer):
             self.next_states.pop(0)
             self.dones.pop(0)
             self.infos.pop(0)
-            return
 
         # TODO (DONE): append state, action, reward, next_state, done, info to their respective lists
         self.states.append(state)

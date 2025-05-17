@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Tuple
 
 import gymnasium as gym
 import hydra
+import matplotlib.pyplot as plt
 import numpy as np
 import torch
 import torch.nn as nn
@@ -122,6 +123,10 @@ class DQNAgent(AbstractAgent):
 
         self.total_steps = 0  # for ε decay and target sync
 
+        # Lists that will be plotted at the end
+        self.frame_history: List[int] = []
+        self.mean_reward_history: List[float] = []
+
     def epsilon(self) -> float:
         """
         Compute current ε by exponential decay.
@@ -235,12 +240,14 @@ class DQNAgent(AbstractAgent):
         s_next = torch.tensor(np.array(next_states), dtype=torch.float32)  # noqa: F841
         mask = torch.tensor(np.array(dones), dtype=torch.float32)  # noqa: F841
 
-        # # TODO: pass batched states through self.q and gather Q(s,a)
-        pred = ...
+        # # TODO (DONE): pass batched states through self.q and gather Q(s,a)
+        q_values = self.q(s)
+        pred = q_values.gather(1, a).squeeze(1)
 
-        # TODO: compute TD target with frozen network
+        # TODO (DONE): compute TD target with frozen network
         with torch.no_grad():
-            target = ...
+            max_next_q = self.target_q(s_next).max(dim=1)[0]
+            target = r + (1.0 - mask) * self.gamma * max_next_q
 
         loss = nn.MSELoss()(pred, target)
 
@@ -290,13 +297,25 @@ class DQNAgent(AbstractAgent):
                 state, _ = self.env.reset()
                 recent_rewards.append(ep_reward)
                 ep_reward = 0.0
-                # logging
-                if len(recent_rewards) % 10 == 0:
-                    # TODO (DONE): compute avg over last eval_interval episodes and print
-                    avg = float(np.mean(recent_rewards[-eval_interval:]))
-                    print(
-                        f"Frame {frame}, AvgReward(10): {avg:.2f}, ε={self.epsilon():.3f}"
-                    )
+                # # logging
+                # if len(recent_rewards) % 10 == 0:
+                #     # TODO (DONE): compute avg over last eval_interval episodes and print
+                #     avg = float(np.mean(recent_rewards[-eval_interval:]))
+                #     print(
+                #         f"Frame {frame}, AvgReward(10): {avg:.2f}, ε={self.epsilon():.3f}"
+                #     )
+            # log every eval_interval frames
+            if frame % eval_interval == 0:
+                mean_r = (
+                    float(np.mean(recent_rewards[-eval_interval:]))
+                    if recent_rewards
+                    else 0.0
+                )
+                self.frame_history.append(frame)
+                self.mean_reward_history.append(mean_r)
+                print(
+                    f"Frame {frame:>7}, mean reward (last {eval_interval} frames): {mean_r:.2f}"
+                )
 
         print("Training complete.")
 
@@ -307,9 +326,41 @@ def main(cfg: DictConfig):
     env = gym.make(cfg.env.name)
     set_seed(env, cfg.seed)
 
-    # 3) TODO: instantiate & train the agent
-    agent = ...
-    agent.train(...)
+    # 3) TODO (DONE): instantiate & train the agent
+    agent = DQNAgent(
+        env,
+        buffer_capacity=cfg.agent.buffer_capacity,
+        batch_size=cfg.agent.batch_size,
+        lr=cfg.agent.learning_rate,
+        gamma=cfg.agent.gamma,
+        epsilon_start=cfg.agent.epsilon_start,
+        epsilon_final=cfg.agent.epsilon_final,
+        epsilon_decay=cfg.agent.epsilon_decay,
+        target_update_freq=cfg.agent.target_update_freq,
+        seed=cfg.seed,
+    )
+
+    agent.train(
+        num_frames=cfg.train.num_frames,
+        eval_interval=cfg.train.eval_interval,
+    )
+
+    # ---Partly LLM generated---
+    if agent.frame_history:
+        arch_name = getattr(cfg.agent, "architecture", "dqn").lower()
+        fname = f"{arch_name}_training_curve.png"
+
+        plt.figure()
+        plt.plot(agent.frame_history, agent.mean_reward_history)
+        plt.xlabel("Frames")
+        plt.ylabel("Mean Reward")
+        plt.title(f"Training curve – {arch_name.upper()}")
+        plt.tight_layout()
+        plt.savefig(fname, dpi=150)
+        plt.close()
+        print(f"Training curve saved to {fname}")
+    else:
+        print("No data collected – skipping plot.")
 
 
 if __name__ == "__main__":
